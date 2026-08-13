@@ -9,6 +9,7 @@ import numpy as np
 import yfinance as yf
 from datetime import datetime
 
+
 # ============================================================
 # PAGE
 # ============================================================
@@ -20,6 +21,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+
 # ============================================================
 # CONSTANTS
 # ============================================================
@@ -29,17 +31,12 @@ NIFTY_500_URL = (
     "ind_nifty500list.csv"
 )
 
-# Broad fallback universe.
-# The application first tries to download the current
-# NIFTY-500 constituent list. If unavailable, this universe
-# keeps the screener usable.
-
 FALLBACK_SYMBOLS = """
 3MINDIA AARTIIND AAVAS ABB ABCAPITAL ABFRL ACC ADANIENSOL
 ADANIENT ADANIGREEN ADANIPORTS ADANIPOWER AFFLE AIAENG AJANTAPHARM
 ALKEM ALKYLAMINE AMBER AMBUJACEM APARINDS APOLLOHOSP APOLLOTYRE
 ASHOKLEY ASIANPAINT ASTRAL ATUL AUBANK AUROPHARMA AXISBANK
-BAJAJ-AUTO BAJAJFINSV BAJFINANCE BALKRISIND BANDHANBNK BANKBARODA
+BAJAJ-AUTO BAJAJFINSV BAJFINANCE BALKARISIND BANDHANBNK BANKBARODA
 BANKINDIA BEL BEML BERGEPAINT BHARATFORG BHARTIARTL BHEL BIOCON
 BIRLACORPN BLUESTARCO BOSCHLTD BPCL BRITANNIA BSOFT CANBK
 CANFINHOME CDSL CESC CGPOWER CHAMBLFERT CHEMPLAST CHOLAFIN CIPLA
@@ -77,60 +74,59 @@ WIPRO YESBANK ZEEL ZOMATO ZYDUSLIFE
 
 SECTOR_MAP = {
     "Banking": {
-        "HDFCBANK","ICICIBANK","SBIN","AXISBANK","KOTAKBANK",
-        "INDUSINDBK","FEDERALBNK","CANBK","BANKBARODA",
-        "IDFCFIRSTB","AUBANK","BANDHANBNK","BANKINDIA","IDBI"
+        "HDFCBANK", "ICICIBANK", "SBIN", "AXISBANK", "KOTAKBANK",
+        "INDUSINDBK", "FEDERALBNK", "CANBK", "BANKBARODA",
+        "IDFCFIRSTB", "AUBANK", "BANDHANBNK", "BANKINDIA", "IDBI"
     },
 
     "IT": {
-        "TCS","INFY","HCLTECH","WIPRO","TECHM","LTIM",
-        "MPHASIS","PERSISTENT","OFSS","COFORGE"
+        "TCS", "INFY", "HCLTECH", "WIPRO", "TECHM", "LTIM",
+        "MPHASIS", "PERSISTENT", "OFSS", "COFORGE"
     },
 
     "Auto": {
-        "MARUTI","M&M","TATAMOTORS","EICHERMOT",
-        "HEROMOTOCO","TVSMOTOR","BOSCHLTD","BAJAJ-AUTO"
+        "MARUTI", "M&M", "TATAMOTORS", "EICHERMOT",
+        "HEROMOTOCO", "TVSMOTOR", "BOSCHLTD", "BAJAJ-AUTO"
     },
 
     "Pharma": {
-        "SUNPHARMA","DRREDDY","CIPLA","DIVISLAB","APOLLOHOSP",
-        "LUPIN","BIOCON","GLENMARK","TORNTPHARM","SYNGENE",
-        "MAXHEALTH","FORTIS"
+        "SUNPHARMA", "DRREDDY", "CIPLA", "DIVISLAB", "APOLLOHOSP",
+        "LUPIN", "BIOCON", "GLENMARK", "TORNTPHARM", "SYNGENE",
+        "MAXHEALTH", "FORTIS"
     },
 
     "Energy": {
-        "RELIANCE","NTPC","POWERGRID","ONGC","COALINDIA",
-        "BPCL","IOC","GAIL","OIL","PFC","REC","NHPC",
-        "TATAPOWER","ADANIGREEN","ADANIPOWER"
+        "RELIANCE", "NTPC", "POWERGRID", "ONGC", "COALINDIA",
+        "BPCL", "IOC", "GAIL", "OIL", "PFC", "REC", "NHPC",
+        "TATAPOWER", "ADANIGREEN", "ADANIPOWER"
     },
 
     "Metals": {
-        "TATASTEEL","JSWSTEEL","HINDALCO","VEDL",
-        "JINDALSTEL","HINDCOPPER","SAIL","NMDC","NATIONALUM"
+        "TATASTEEL", "JSWSTEEL", "HINDALCO", "VEDL",
+        "JINDALSTEL", "HINDCOPPER", "SAIL", "NMDC", "NATIONALUM"
     },
 
     "FMCG": {
-        "ITC","HINDUNILVR","NESTLEIND","BRITANNIA",
-        "DABUR","MARICO","GODREJCP","COLPAL","TATACONSUM","VBL"
+        "ITC", "HINDUNILVR", "NESTLEIND", "BRITANNIA",
+        "DABUR", "MARICO", "GODREJCP", "COLPAL", "TATACONSUM", "VBL"
     },
 
     "Industrials": {
-        "LT","BEL","HAL","SIEMENS","ABB","BHEL",
-        "CGPOWER","CUMMINSIND","KEI","POLYCAB","DIXON"
+        "LT", "BEL", "HAL", "SIEMENS", "ABB", "BHEL",
+        "CGPOWER", "CUMMINSIND", "KEI", "POLYCAB", "DIXON"
     },
 
     "Realty": {
-        "DLF","GODREJPROP","OBEROIRLTY","PHOENIXLTD","PRESTIGE"
+        "DLF", "GODREJPROP", "OBEROIRLTY", "PHOENIXLTD", "PRESTIGE"
     },
 
     "Consumer": {
-        "TITAN","TRENT","ASIANPAINT","DMART","HAVELLS",
-        "CROMPTON","VOLTAS","KALYANKJIL","PAGEIND"
+        "TITAN", "TRENT", "ASIANPAINT", "DMART", "HAVELLS",
+        "CROMPTON", "VOLTAS", "KALYANKJIL", "PAGEIND"
     }
 }
 
 
-# ============================================================
 # ============================================================
 # UNIVERSE
 # ============================================================
@@ -138,98 +134,81 @@ SECTOR_MAP = {
 @st.cache_data(ttl=86400, show_spinner=False)
 def load_universe():
 
-    # --------------------------------------------------------
-    # IMPORTANT:
-    # Do NOT use pd.read_html() on the NSE CSV URL.
-    # It can hang during Streamlit deployment.
-    # --------------------------------------------------------
+    try:
+        import requests
+        from io import StringIO
 
-    urls = [
-        "https://www.niftyindices.com/IndexConstituent/ind_nifty500list.csv"
-    ]
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 "
+                "(Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 "
+                "(KHTML, like Gecko) "
+                "Chrome/131.0 Safari/537.36"
+            ),
+            "Accept": "text/csv,text/plain,*/*"
+        }
 
-    # Try official NIFTY 500 CSV with a strict timeout
-    for url in urls:
+        response = requests.get(
+            NIFTY_500_URL,
+            headers=headers,
+            timeout=8
+        )
 
-        try:
+        response.raise_for_status()
 
-            import requests
-            from io import StringIO
+        text = response.text.strip()
 
-            headers = {
-                "User-Agent": (
-                    "Mozilla/5.0 "
-                    "(Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 "
-                    "(KHTML, like Gecko) "
-                    "Chrome/131.0 Safari/537.36"
-                ),
-                "Accept": "text/csv,text/plain,*/*"
-            }
+        if text:
 
-            response = requests.get(
-                url,
-                headers=headers,
-                timeout=8
+            table = pd.read_csv(
+                StringIO(text)
             )
 
-            response.raise_for_status()
+            symbol_column = None
 
-            text = response.text.strip()
+            for col in table.columns:
 
-            if text:
+                if "symbol" in str(col).lower():
 
-                table = pd.read_csv(
-                    StringIO(text)
+                    symbol_column = col
+                    break
+
+            if symbol_column is not None:
+
+                symbols = (
+                    table[symbol_column]
+                    .astype(str)
+                    .str.strip()
+                    .str.upper()
+                    .tolist()
                 )
 
-                symbol_column = None
-
-                for col in table.columns:
-
-                    if "symbol" in str(col).lower():
-
-                        symbol_column = col
-                        break
-
-                if symbol_column is not None:
-
-                    symbols = (
-                        table[symbol_column]
-                        .astype(str)
-                        .str.strip()
-                        .str.upper()
-                        .tolist()
-                    )
-
-                    symbols = list(
-                        dict.fromkeys(
-                            [
-                                s
-                                for s in symbols
-                                if s
-                                and s not in [
-                                    "NAN",
-                                    "SYMBOL"
-                                ]
-                            ]
-                        )
-                    )
-
-                    # Accept current NIFTY 500 size
-                    # (NIFTY 500 can have slightly more/less
-                    # than exactly 500 constituents during changes)
-                    if len(symbols) >= 450:
-
-                        return [
+                symbols = list(
+                    dict.fromkeys(
+                        [
                             s
-                            if s.endswith(".NS")
-                            else s + ".NS"
                             for s in symbols
+                            if s
+                            and s not in [
+                                "NAN",
+                                "SYMBOL"
+                            ]
                         ]
+                    )
+                )
 
-        except Exception:
-            continue
+                if len(symbols) >= 450:
+
+                    return [
+                        s
+                        if s.endswith(".NS")
+                        else s + ".NS"
+                        for s in symbols
+                    ]
+
+    except Exception:
+        pass
 
     # --------------------------------------------------------
     # FALLBACK
@@ -253,57 +232,9 @@ def load_universe():
     ]
 
 
-# Load universe safely
-SYMBOLS = load_universe()
-
-    try:
-        tables = pd.read_html(
-            "https://www.niftyindices.com/IndexConstituent/"
-            "ind_nifty500list.csv"
-        )
-
-        for table in tables:
-
-            for col in table.columns:
-
-                if "symbol" in str(col).lower():
-
-                    symbols = (
-                        table[col]
-                        .astype(str)
-                        .str.strip()
-                        .str.upper()
-                        .tolist()
-                    )
-
-                    symbols = list(
-                        dict.fromkeys(
-                            [
-                                s for s in symbols
-                                if s not in ["NAN", "SYMBOL"]
-                            ]
-                        )
-                    )
-
-                    if len(symbols) >= 450:
-
-                        return [
-                            s + ".NS"
-                            for s in symbols
-                        ]
-
-    except Exception:
-        pass
-
-    return list(
-        dict.fromkeys(
-            [
-                s + ".NS"
-                for s in FALLBACK_SYMBOLS.split()
-            ]
-        )
-    )
-
+# ============================================================
+# LOAD UNIVERSE SAFELY
+# ============================================================
 
 SYMBOLS = load_universe()
 
@@ -398,36 +329,33 @@ def adx(df, period=14):
     )
 
     plus_di = (
-        100 *
-        plus_dm.ewm(
+        100
+        * plus_dm.ewm(
             alpha=1 / period,
             adjust=False
         ).mean()
-        /
-        atr_v.replace(
+        / atr_v.replace(
             0,
             np.nan
         )
     )
 
     minus_di = (
-        100 *
-        minus_dm.ewm(
+        100
+        * minus_dm.ewm(
             alpha=1 / period,
             adjust=False
         ).mean()
-        /
-        atr_v.replace(
+        / atr_v.replace(
             0,
             np.nan
         )
     )
 
     dx = (
-        100 *
-        (plus_di - minus_di).abs()
-        /
-        (
+        100
+        * (plus_di - minus_di).abs()
+        / (
             plus_di + minus_di
         ).replace(
             0,
@@ -459,7 +387,10 @@ def candle_pattern(df):
     pc = float(df["Close"].iloc[-2])
 
     body = abs(c - o)
-    candle_range = max(h - l, 0.00001)
+    candle_range = max(
+        h - l,
+        0.00001
+    )
 
     upper = h - max(c, o)
     lower = min(c, o) - l
@@ -529,12 +460,16 @@ def market_regime():
             df.columns,
             pd.MultiIndex
         ):
+
             df.columns = (
                 df.columns
                 .get_level_values(0)
             )
 
         close = df["Close"].dropna()
+
+        if len(close) < 50:
+            return "UNKNOWN"
 
         e20 = close.ewm(
             span=20,
@@ -594,6 +529,7 @@ def prepare_dataframe(df):
         df.columns,
         pd.MultiIndex
     ):
+
         df.columns = (
             df.columns
             .get_level_values(0)
@@ -646,6 +582,7 @@ def analyze_stock(
             return None
 
         close = df["Close"]
+
         volume = df["Volume"].replace(
             0,
             np.nan
@@ -727,7 +664,10 @@ def analyze_stock(
             vol20.iloc[-1]
         )
 
-        if average_vol <= 0:
+        if (
+            np.isnan(average_vol)
+            or average_vol <= 0
+        ):
             volume_multiple = 0
         else:
             volume_multiple = (
@@ -838,22 +778,22 @@ def analyze_stock(
         # ----------------------------------------------------
 
         trend_score = sum([
-            above20,
-            above50,
-            above200,
-            ema_stack
+            int(above20),
+            int(above50),
+            int(above200),
+            int(ema_stack)
         ])
 
         momentum_score = sum([
-            rsi_momentum,
-            macd_bull,
-            adx_good
+            int(rsi_momentum),
+            int(macd_bull),
+            int(adx_good)
         ])
 
         breakout_score = sum([
-            breakout20,
-            near_breakout,
-            breakout52
+            int(breakout20),
+            int(near_breakout),
+            int(breakout52)
         ])
 
         volume_score = int(
@@ -876,10 +816,8 @@ def analyze_stock(
             candle_score
         )
 
-        # Maximum = 12
         max_score = 12
 
-        # Convert to /10
         score10 = round(
             (
                 raw_score /
@@ -889,7 +827,7 @@ def analyze_stock(
         )
 
         # ----------------------------------------------------
-        # Strategy-specific confirmation
+        # Strategy confirmation
         # ----------------------------------------------------
 
         if strategy == "Swing":
@@ -978,7 +916,10 @@ def analyze_stock(
 
             signal = "AVOID"
 
-        if bearish_candle and signal == "STRONG BUY":
+        if (
+            bearish_candle
+            and signal == "STRONG BUY"
+        ):
             signal = "BUY"
 
         # ----------------------------------------------------
@@ -992,13 +933,29 @@ def analyze_stock(
                 round(
                     score10 * 10
                     +
-                    (5 if volume_good else 0)
+                    (
+                        5
+                        if volume_good
+                        else 0
+                    )
                     +
-                    (5 if breakout20 else 0)
+                    (
+                        5
+                        if breakout20
+                        else 0
+                    )
                     +
-                    (5 if bullish_candle else 0)
+                    (
+                        5
+                        if bullish_candle
+                        else 0
+                    )
                     -
-                    (5 if market == "BEARISH" else 0)
+                    (
+                        5
+                        if market == "BEARISH"
+                        else 0
+                    )
                 )
             )
         )
@@ -1040,6 +997,9 @@ def analyze_stock(
 
         risk = entry - sl
 
+        if risk <= 0:
+            return None
+
         tp1 = (
             entry +
             1.5 * risk
@@ -1070,13 +1030,13 @@ def analyze_stock(
             .upper()
         )
 
-        sector = "Other"
+        sector_name = "Other"
 
         for sec, stocks in SECTOR_MAP.items():
 
             if clean_symbol in stocks:
 
-                sector = sec
+                sector_name = sec
                 break
 
         return {
@@ -1160,7 +1120,7 @@ def analyze_stock(
 
             "Candle": candle,
 
-            "Sector": sector,
+            "Sector": sector_name,
 
             "Entry": round(
                 entry,
@@ -1209,13 +1169,19 @@ def analyze_stock(
 # FAST BATCH DOWNLOAD
 # ============================================================
 
-@st.cache_data(ttl=900, show_spinner=False)
+@st.cache_data(
+    ttl=900,
+    show_spinner=False
+)
 def download_market_data(
     symbols,
     period
 ):
 
     try:
+
+        if not symbols:
+            return None
 
         data = yf.download(
             tickers=symbols,
@@ -1252,8 +1218,9 @@ def extract_stock(
             pd.MultiIndex
         ):
 
-            if symbol not in batch.columns.get_level_values(1):
+            level1 = batch.columns.get_level_values(1)
 
+            if symbol not in level1:
                 return None
 
             stock = batch.xs(
@@ -1420,7 +1387,7 @@ with st.sidebar:
 
     else:
 
-        scan_symbols = SYMBOLS
+        scan_symbols = SYMBOLS.copy()
 
     st.header(
         "🎯 Strategy"
@@ -1548,6 +1515,14 @@ if scan_button:
 
     results = []
 
+    if not scan_symbols:
+
+        st.error(
+            "No symbols available for scanning."
+        )
+
+        st.stop()
+
     batch = download_market_data(
         scan_symbols,
         history
@@ -1562,8 +1537,8 @@ if scan_button:
     ):
 
         status.write(
-            f"Scanning {symbol.replace('.NS','')} "
-            f"({i+1}/{total})"
+            f"Scanning {symbol.replace('.NS', '')} "
+            f"({i + 1}/{total})"
         )
 
         stock_df = extract_stock(
@@ -1608,7 +1583,9 @@ if scan_button:
                 ]
             ):
                 pass
+
             else:
+
                 results.append(
                     row
                 )
@@ -1642,17 +1619,20 @@ if scan_button:
             drop=True
         )
 
-    st.session_state["v4_results"] = (
-        result_df
-    )
+    st.session_state[
+        "v4_results"
+    ] = result_df
 
     elapsed = (
         datetime.now() -
         start_time
     ).total_seconds()
 
-    st.session_state["v4_scan_time"] = (
-        round(elapsed, 1)
+    st.session_state[
+        "v4_scan_time"
+    ] = round(
+        elapsed,
+        1
     )
 
 
@@ -1705,10 +1685,6 @@ else:
                 df["Signal"]
                 == "WATCH"
             ).sum()
-        )
-
-        best_score = float(
-            df["ScoreNum"].max()
         )
 
         scan_time = st.session_state.get(
@@ -1844,9 +1820,7 @@ else:
                 hide_index=True
             )
 
-            st.download_button(
-                "⬇️ Download Full CSV",
-
+            csv_data = (
                 df.drop(
                     columns=[
                         "ScoreNum",
@@ -1859,10 +1833,13 @@ else:
                 )
                 .encode(
                     "utf-8"
-                ),
+                )
+            )
 
+            st.download_button(
+                "⬇️ Download Full CSV",
+                csv_data,
                 "vardha_pro_screener_v4.csv",
-
                 "text/csv"
             )
 
@@ -2107,7 +2084,7 @@ if search_stock:
 
         st.subheader(
             f"🔎 Individual Analysis: "
-            f"{clean.replace('.NS','')}"
+            f"{clean.replace('.NS', '')}"
         )
 
         try:
@@ -2201,7 +2178,14 @@ if search_stock:
                         "1y"
                     )
 
-        except Exception:
+                else:
+
+                    st.warning(
+                        "Unable to generate a valid "
+                        "technical analysis for this stock."
+                    )
+
+        except Exception as e:
 
             st.error(
                 "Unable to analyze this stock."
