@@ -131,11 +131,130 @@ SECTOR_MAP = {
 
 
 # ============================================================
+# ============================================================
 # UNIVERSE
 # ============================================================
 
-@st.cache_data(ttl=86400)
+@st.cache_data(ttl=86400, show_spinner=False)
 def load_universe():
+
+    # --------------------------------------------------------
+    # IMPORTANT:
+    # Do NOT use pd.read_html() on the NSE CSV URL.
+    # It can hang during Streamlit deployment.
+    # --------------------------------------------------------
+
+    urls = [
+        "https://www.niftyindices.com/IndexConstituent/ind_nifty500list.csv"
+    ]
+
+    # Try official NIFTY 500 CSV with a strict timeout
+    for url in urls:
+
+        try:
+
+            import requests
+            from io import StringIO
+
+            headers = {
+                "User-Agent": (
+                    "Mozilla/5.0 "
+                    "(Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 "
+                    "(KHTML, like Gecko) "
+                    "Chrome/131.0 Safari/537.36"
+                ),
+                "Accept": "text/csv,text/plain,*/*"
+            }
+
+            response = requests.get(
+                url,
+                headers=headers,
+                timeout=8
+            )
+
+            response.raise_for_status()
+
+            text = response.text.strip()
+
+            if text:
+
+                table = pd.read_csv(
+                    StringIO(text)
+                )
+
+                symbol_column = None
+
+                for col in table.columns:
+
+                    if "symbol" in str(col).lower():
+
+                        symbol_column = col
+                        break
+
+                if symbol_column is not None:
+
+                    symbols = (
+                        table[symbol_column]
+                        .astype(str)
+                        .str.strip()
+                        .str.upper()
+                        .tolist()
+                    )
+
+                    symbols = list(
+                        dict.fromkeys(
+                            [
+                                s
+                                for s in symbols
+                                if s
+                                and s not in [
+                                    "NAN",
+                                    "SYMBOL"
+                                ]
+                            ]
+                        )
+                    )
+
+                    # Accept current NIFTY 500 size
+                    # (NIFTY 500 can have slightly more/less
+                    # than exactly 500 constituents during changes)
+                    if len(symbols) >= 450:
+
+                        return [
+                            s
+                            if s.endswith(".NS")
+                            else s + ".NS"
+                            for s in symbols
+                        ]
+
+        except Exception:
+            continue
+
+    # --------------------------------------------------------
+    # FALLBACK
+    # --------------------------------------------------------
+
+    fallback = [
+        s.strip().upper()
+        for s in FALLBACK_SYMBOLS.split()
+        if s.strip()
+    ]
+
+    fallback = list(
+        dict.fromkeys(fallback)
+    )
+
+    return [
+        s
+        if s.endswith(".NS")
+        else s + ".NS"
+        for s in fallback
+    ]
+
+
+# Load universe safely
+SYMBOLS = load_universe()
 
     try:
         tables = pd.read_html(
