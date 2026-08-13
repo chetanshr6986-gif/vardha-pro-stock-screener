@@ -1,307 +1,205 @@
-# VARDHA PRO STOCK SCREENER V3.3
-# Broad NIFTY-500 style universe
-# Intraday / Swing / Options Stock Finder
-# Sector filtering
-# Market regime guard
-# Candlestick confirmation
-# Improved trade plans
-# Telegram alerts intentionally excluded
-
 import streamlit as st
 import pandas as pd
 import numpy as np
 import yfinance as yf
+import requests
+from io import StringIO
 
 st.set_page_config(
-    page_title="Vardha Pro Stock Screener V3.3",
+    page_title="Vardha Pro Stock Screener V4",
     page_icon="📈",
     layout="wide"
 )
 
 # ============================================================
-# UNIVERSE
+# NIFTY 500 UNIVERSE
 # ============================================================
 
-NIFTY_500_SOURCE = "https://indexscreener.in/indices/nifty-500/constituents"
+@st.cache_data(ttl=86400)
+def load_nifty500():
 
+    urls = [
+        "https://archives.nseindia.com/content/indices/ind_nifty500list.csv",
+        "https://www.niftyindices.com/IndexConstituent/ind_nifty500list.csv"
+    ]
 
-def load_nifty500_symbols():
-    """
-    Load a broad NIFTY-500 style NSE universe.
+    for url in urls:
 
-    Primary:
-        indexscreener.in
-
-    Secondary:
-        NSE India API
-
-    Final:
-        Large static universe
-
-    IMPORTANT:
-    We do NOT fall back to the old 34-stock list.
-    """
-
-    # --------------------------------------------------------
-    # 1. PRIMARY SOURCE
-    # --------------------------------------------------------
-
-    try:
-        tables = pd.read_html(NIFTY_500_SOURCE)
-
-        for table in tables:
-
-            cols = {
-                str(c).strip().lower(): c
-                for c in table.columns
-            }
-
-            symbol_col = next(
-                (
-                    orig
-                    for key, orig in cols.items()
-                    if "symbol" in key
-                ),
-                None
+        try:
+            r = requests.get(
+                url,
+                timeout=20,
+                headers={
+                    "User-Agent": "Mozilla/5.0"
+                }
             )
 
-            if symbol_col is not None:
+            if r.status_code == 200:
 
-                symbols = (
-                    table[symbol_col]
-                    .astype(str)
-                    .str.strip()
-                    .str.upper()
-                    .replace({"NAN": np.nan})
-                    .dropna()
-                    .tolist()
+                df = pd.read_csv(
+                    StringIO(r.text)
                 )
 
-                symbols = [
-                    s
-                    for s in symbols
-                    if s
-                    and s not in {"SYMBOL", "NAN"}
-                    and " " not in s
-                ]
+                if "Symbol" in df.columns:
 
-                symbols = list(dict.fromkeys(symbols))
+                    symbols = (
+                        df["Symbol"]
+                        .astype(str)
+                        .str.strip()
+                        .str.upper()
+                        .dropna()
+                        .tolist()
+                    )
 
-                if len(symbols) >= 450:
+                    symbols = list(
+                        dict.fromkeys(symbols)
+                    )
 
-                    return [
-                        s if s.endswith(".NS") else s + ".NS"
-                        for s in symbols[:500]
-                    ]
+                    if len(symbols) >= 450:
 
-    except Exception:
-        pass
+                        return [
+                            s + ".NS"
+                            for s in symbols
+                        ]
 
-    # --------------------------------------------------------
-    # 2. SECONDARY SOURCE - NSE INDIA
-    # --------------------------------------------------------
-
-    try:
-
-        import requests
-
-        headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 "
-                "(KHTML, like Gecko) "
-                "Chrome/131.0 Safari/537.36"
-            ),
-            "Accept": "application/json,text/plain,*/*",
-            "Referer": "https://www.nseindia.com/"
-        }
-
-        session = requests.Session()
-        session.headers.update(headers)
-
-        session.get(
-            "https://www.nseindia.com/",
-            timeout=10
-        )
-
-        response = session.get(
-            "https://www.nseindia.com/api/equity-stockIndices?index=NIFTY%20500",
-            timeout=20
-        )
-
-        if response.ok:
-
-            data = response.json()
-
-            rows = data.get("data", [])
-
-            symbols = []
-
-            for row in rows:
-
-                symbol = str(
-                    row.get("symbol", "")
-                ).strip().upper()
-
-                if symbol:
-                    symbols.append(symbol)
-
-            symbols = list(dict.fromkeys(symbols))
-
-            if len(symbols) >= 450:
-
-                return [
-                    s if s.endswith(".NS") else s + ".NS"
-                    for s in symbols[:500]
-                ]
-
-    except Exception:
-        pass
+        except Exception:
+            continue
 
     # --------------------------------------------------------
-    # 3. LARGE STATIC FALLBACK
+    # Fallback: broad NSE universe
     # --------------------------------------------------------
 
-    fallback_text = """
-RELIANCE TCS HDFCBANK ICICIBANK INFY HINDUNILVR ITC
-SBIN BHARTIARTL KOTAKBANK LT AXISBANK HCLTECH MARUTI
-SUNPHARMA M&M TATAMOTORS TITAN ULTRACEMCO ASIANPAINT
-NTPC POWERGRID ONGC COALINDIA BAJFINANCE BAJAJFINSV
-TATASTEEL JSWSTEEL WIPRO TECHM ADANIENT ADANIPORTS
-BEL HAL TRENT ZOMATO DLF DIVISLAB DRREDDY CIPLA
-EICHERMOT HEROMOTOCO TVSMOTOR BAJAJ-AUTO BOSCHLTD
-HINDALCO VEDL JINDALSTEL SAIL NMDC NATIONALUM
-BPCL IOC GAIL OIL PFC REC NHPC TATAPOWER
-SIEMENS ABB BHEL CGPOWER CUMMINSIND KEI POLYCAB
-DIXON LTIM MPHASIS PERSISTENT OFSS COFORGE
-FEDERALBNK CANBK BANKBARODA IDFCFIRSTB AUBANK
-BANDHANBNK BANKINDIA IDBI LICHSGFIN MUTHOOTFIN
-MANAPPURAM SHRIRAMFIN SBICARD ICICIPRULI ICICIGI
-BRITANNIA DABUR MARICO GODREJCP COLPAL TATACONSUM VBL
-GODREJPROP OBEROIRLTY PHOENIXLTD PRESTIGE
-HAVELLS CROMPTON VOLTAS KALYANKJIL PAGEIND DMART
-APOLLOHOSP LUPIN BIOCON GLENMARK TORNTPHARM SYNGENE
-MAXHEALTH FORTIS
+    fallback = """
+    RELIANCE TCS HDFCBANK ICICIBANK INFY HINDUNILVR ITC SBIN
+    BHARTIARTL KOTAKBANK LT AXISBANK HCLTECH MARUTI SUNPHARMA
+    M&M TATAMOTORS TITAN ULTRACEMCO ASIANPAINT NTPC POWERGRID
+    ONGC COALINDIA BAJFINANCE BAJAJFINSV TATASTEEL JSWSTEEL
+    WIPRO TECHM ADANIENT ADANIPORTS BEL HAL TRENT ZOMATO DLF
+    DIVISLAB DRREDDY CIPLA APOLLOHOSP LUPIN BIOCON GLENMARK
+    TORNTPHARM MAXHEALTH FORTIS EICHERMOT HEROMOTOCO TVSMOTOR
+    BAJAJ-AUTO BOSCHLTD HINDALCO VEDL JINDALSTEL SAIL NMDC
+    NATIONALUM BPCL IOC GAIL OIL PFC REC NHPC TATAPOWER
+    ADANIGREEN ADANIPOWER SIEMENS ABB BHEL CGPOWER CUMMINSIND
+    KEI POLYCAB DIXON LTIM MPHASIS PERSISTENT OFSS COFORGE
+    FEDERALBNK CANBK BANKBARODA IDFCFIRSTB AUBANK BANDHANBNK
+    BANKINDIA IDBI LICHSGFIN MUTHOOTFIN MANAPPURAM SHRIRAMFIN
+    SBICARD ICICIPRULI ICICIGI BRITANNIA DABUR MARICO GODREJCP
+    COLPAL TATACONSUM VBL GODREJPROP OBEROIRLTY PHOENIXLTD
+    PRESTIGE LODHA BRIGADE HAVELLS CROMPTON VOLTAS KALYANKJIL
+    PAGEIND DMART WHIRLPOOL
 
-3MINDIA AARTIIND AAVAS AEGISCHEM AFFLE AMBER APLAPOLLO
-APARINDS ASTRAL ATUL AUROPHARMA BALKRISIND BATAINDIA
-BAYERCROP BLUESTARCO CANFINHOME CASTROLIND CEATLTD
-CENTRALBK CENTURYPLY CESC CHAMBLFERT CHOLAFIN
-COCHINSHIP COROMANDEL CROMPTON CYIENT DATAPATTNS
-DELHIVERY DEVYANI EIDPARRY EMAMILTD ENDURANCE
-ENGRO ENGINEERSIN EQUITASBNK EXIDEIND FINCABLE
-FINPIPE FLUOROCHEM GESHIP GICRE GLAND
-GRANULES GRAPHITE GREENPANEL GRINDWELL GSPL
-GUJGASLTD HAPPSTMNDS HATSUN HDFCAMC HINDCOPPER
-HINDPETRO HINDZINC HOMEFIRST HUDCO IEX IGL
-INDHOTEL INDIACEM INDIAMART INDIANB INDIGO
-INDIANHUME INOXWIND IRCTC IRFC IREDA ISEC
-ITDC JAMNAAUTO JINDALSAW JK CEMENT JKCEMENT
-JSL JUBLFOOD KALYANKJIL KAYNES KPIL KPIT
-LAURUSLABS LAXMIMACHINE LEMONTREE LODHA MGL
-MINDACORP MOTHERSON MOTILALOFS NATIONALUM NAVINFLUOR
-NBCC NLCINDIA NOCIL OFSS OLECTRA OMAXE
-ORIENTELEC PAGEIND PCBL PEL PETRONET PFIZER
-PNB POLYCAB PRAJIND PRESTIGE PVRINOX RAINBOW
-RALLIS RBLBANK REDINGTON ROUTE SAPPHIRE SBICARD
-SCHAEFFLER SHREECEM SKFIND SONACOMS SONATSOFTW
-STARHEALTH SUMICHEM SUPREMEIND SUNDARMFIN SUNTECK
-SUPRAJIT SYMPHONY TATACHEM TATACOMM TATATECH
-TRIDENT TRIVENI TURBO UCOBANK UJJIVANSFB UNIONBANK
-UPL UTIAMC VAKRANGEE VARROC VEDANT VESUVIUS
-VIJAYA WELSPUN WESTLIFE WOCKPHARMA YESBANK
-ZEEL ZENSARTECH ZYDUSLIFE
+    3MINDIA AARTIIND AAVAS AEGISCHEM AFFLE AMBER APLAPOLLO
+    APARINDS ASTRAL ATUL AUROPHARMA BALKRISIND BATAINDIA
+    BAYERCROP BLUESTARCO CANFINHOME CASTROLIND CEATLTD
+    CENTRALBK CENTURYPLY CESC CHAMBLFERT CHOLAFIN COCHINSHIP
+    COROMANDEL CYIENT DATAPATTNS DELHIVERY DEVYANI EIDPARRY
+    EMAMILTD ENDURANCE ENGRO ENGINEERSIN EQUITASBNK EXIDEIND
+    FINCABLE FINPIPE FLUOROCHEM GESHIP GICRE GLAND GRANULES
+    GRAPHITE GREENPANEL GRINDWELL GSPL GUJGASLTD HAPPSTMNDS
+    HATSUN HDFCAMC HINDCOPPER HINDPETRO HINDZINC HOMEFIRST
+    HUDCO IEX IGL INDHOTEL INDIACEM INDIAMART INDIANB INDIGO
+    INDIANHUME INOXWIND IRCTC IRFC IREDA ISEC ITDC JAMNAAUTO
+    JINDALSAW JK CEMENT JKCEMENT JSL JUBLFOOD KAYNES KPIL
+    LAURUSLABS LAXMIMACHINE LEMONTREE MGL MINDACORP MOTHERSON
+    MOTILALOFS NATIONALUM NAVINFLUOR NBCC NLCINDIA NOCIL
+    OFSS OLECTRA OMAXE ORIENTELEC PAGEIND PCBL PEL PETRONET
+    PFIZER PNB POLYCAB PRAJIND PVRINOX RAINBOW RBLBANK
+    REDINGTON ROUTE SAPPHIRE SCHAEFFLER SHREECEM SKFIND
+    SONACOMS SONATSOFTW STARHEALTH SUMICHEM SUPREMEIND
+    SUNDARMFIN SUNTECK SUPRAJIT SYMPHONY TATACHEM TATACOMM
+    TATATECH TRIDENT TRIVENI UCOBANK UJJIVANSFB UNIONBANK
+    UPL UTIAMC VAKRANGEE VARROC VEDANT VESUVIUS VIJAYA
+    WELSPUN WESTLIFE WOCKPHARMA YESBANK ZEEL ZENSARTECH
+    ZYDUSLIFE ABCAPITAL ABFRL ACC ALKEM ALKYLAMINE ASHOKLEY
+    ASTRAL BDL BEML BIKAJI BIRLACORPN BRIGADE CARBORUNIV
+    CERA CHEMPLAST CIEINDIA CRAFTSMAN CREDITACC DCMSHRIRAM
+    DEEPAKNTR ECLERX EIHOTEL ELGIEQUIP ERIS FDC FINEORG
+    FIVESTAR GABRIEL GARFIBRES GILLETTE GLAXO HCG HINDWARE
+    HONASA HONAUT ICRA IIFL IIFLWAM INDIACEM INDIGOPNTS
+    INOXGREEN IRB IRCON JBCHEPHARM JKLAKSHMI JKPAPER
+    JUBLINGREA KANSAINER KEC KFINTECH KNRCON KRBL LALPATHLAB
+    LATENTVIEW LICI MAHABANK MAHSEAMLES MAHLOG MARATHON
+    MCX MEDANTA MEDPLUS METROPOLIS MIDHANI MIRZAINT MRPL
+    MSTCLTD NATCOPHARM NAZARA NBCC NBIFIN NEOGEN NESCO
+    NETWORK18 NEWGEN NIITLTD NITINSPIN OBEROIRLTY OIL OLAELEC
+    ORIENTCEM PNCINFRA POONAWALLA PPLPHARMA PRAJIND PRICOLLTD
+    PRINCEPIPE RAILTEL RITES ROSSARI RPOWER RVNL SAKSOFT
+    SAMHI SANDHAR SANGHVIMOV SARDAEN SAREGAMA SCHNEIDER
+    SEQUENT SHARDACROP SHILPAMED SHRIRAMFIN SOBHA STLTECH
+    TANLA TCI TCIEXP TEGAS THERMAX THOMASCOOK TITAGARH TMB
+    TURBO UCOBANK UJJIVANSFB UNIONBANK UPL UTIAMC VARROC
+    VIJAYA WELSPUN YESBANK
+    """
 
-ABCAPITAL ABFRL ACC ALKEM ALKYLAMINE APARINDS ASHOKLEY
-ATHERENERGY ASTRAL BDL BEML BIKAJI BIRLACORPN
-BRIGADE CARBORUNIV CARTRADE CERA CHEMPLAST
-CIEINDIA COCHINSHIP CRAFTSMAN CREDITACC DCMSHRIRAM
-DEEPAKNTR DELHIVERY DODLA ECLERX EIHOTEL
-ELGIEQUIP ERIS FDC FINEORG FIVESTAR FINCABLE
-FINPIPE FORTIS GABRIEL GARFIBRES GESHIP GILLETTE
-GLAXO GLENMARK GRANULES GRAPHITE GREENPANEL
-HAPPSTMNDS HARSHA HCG HINDCOPPER HINDWARE HOMEFIRST
-HONASA HONAUT ICRA IDFCFIRSTB IIFL IIFLWAM
-INDIACEM INDIAMART INDIGOPNTS INOXGREEN IRB IRCON
-JBCHEPHARM JINDALSAW JKLAKSHMI JKPAPER JUBLINGREA
-KANSAINER KEC KFINTECH KNRCON KPIL KRBL
-LALPATHLAB LATENTVIEW LAURUSLABS LICI LODHA
-MAHABANK MAHSEAMLES MAHLOG MARATHON MCX MEDANTA
-MEDPLUS METROPOLIS MGL MIDHANI MIRZAINT MOTHERSON
-MOTILALOFS MRPL MSTCLTD NATCOPHARM NAZARA NBCC
-NBIFIN NEOGEN NESCO NETWORK18 NEWGEN NIITLTD
-NITINSPIN OBEROIRLTY OIL OLAELEC OMAXE ORIENTCEM
-PNCINFRA POONAWALLA PPLPHARMA PRAJIND PRICOLLTD
-PRINCEPIPE RAILTEL RITES ROSSARI RPOWER RVNL
-SAKSOFT SAMHI SANDHAR SANGHVIMOV SARDAEN
-SAREGAMA SCHNEIDER SEQUENT SHARDACROP SHILPAMED
-SHRIRAMFIN SOBHA SONATSOFTW STARHEALTH STLTECH
-SUMICHEM SUPRAJIT SUPREMEIND SURYAROSNI TANLA
-TCI TCIEXP TEGAS THERMAX THOMASCOOK TITAGARH
-TMB TORNTPHARM TRIDENT TRIVENI UCOBANK UJJIVANSFB
-UNIONBANK UPL UTIAMC VAKRANGEE VARROC VEDANT
-VESUVIUS VIJAYA WELSPUN WESTLIFE WOCKPHARMA
-YESBANK ZEEL ZENSARTECH ZYDUSLIFE
-"""
+    symbols = fallback.split()
 
-    fallback = fallback_text.split()
-
-    fallback = list(
-        dict.fromkeys(
-            [
-                s
-                for s in fallback
-                if s and s.isascii()
-            ]
-        )
+    symbols = list(
+        dict.fromkeys(symbols)
     )
 
     return [
-        s if s.endswith(".NS") else s + ".NS"
-        for s in fallback
+        s + ".NS"
+        for s in symbols
     ]
 
 
-SYMBOLS = load_nifty500_symbols()
+SYMBOLS = load_nifty500()
 
 
 # ============================================================
-# TECHNICAL INDICATORS
+# INDICATORS
 # ============================================================
 
-def rsi(s, n=14):
+def calc_rsi(close, n=14):
 
-    d = s.diff()
+    delta = close.diff()
 
-    up = d.clip(lower=0)
-    dn = -d.clip(upper=0)
+    gain = delta.clip(
+        lower=0
+    )
 
-    au = up.ewm(
+    loss = -delta.clip(
+        upper=0
+    )
+
+    avg_gain = gain.ewm(
         alpha=1 / n,
         adjust=False
     ).mean()
 
-    ad = dn.ewm(
+    avg_loss = loss.ewm(
         alpha=1 / n,
         adjust=False
     ).mean()
 
-    rs = au / ad.replace(0, np.nan)
+    rs = (
+        avg_gain /
+        avg_loss.replace(
+            0,
+            np.nan
+        )
+    )
 
     return 100 - (
         100 / (1 + rs)
     )
 
 
-def atr(df, n=14):
+def calc_atr(df, n=14):
 
-    pc = df["Close"].shift(1)
+    previous_close = df["Close"].shift(1)
 
     tr = pd.concat(
         [
             df["High"] - df["Low"],
-            (df["High"] - pc).abs(),
-            (df["Low"] - pc).abs()
+            (
+                df["High"] -
+                previous_close
+            ).abs(),
+            (
+                df["Low"] -
+                previous_close
+            ).abs()
         ],
         axis=1
     ).max(axis=1)
@@ -312,93 +210,23 @@ def atr(df, n=14):
     ).mean()
 
 
-def adx(df, n=14):
-
-    h = df["High"]
-    l = df["Low"]
-
-    up = h.diff()
-    down = -l.diff()
-
-    plus_dm = pd.Series(
-        np.where(
-            (up > down) & (up > 0),
-            up,
-            0.0
-        ),
-        index=df.index
-    )
-
-    minus_dm = pd.Series(
-        np.where(
-            (down > up) & (down > 0),
-            down,
-            0.0
-        ),
-        index=df.index
-    )
-
-    a = atr(df, n)
-
-    plus_di = (
-        100
-        * plus_dm.ewm(
-            alpha=1 / n,
-            adjust=False
-        ).mean()
-        / a.replace(0, np.nan)
-    )
-
-    minus_di = (
-        100
-        * minus_dm.ewm(
-            alpha=1 / n,
-            adjust=False
-        ).mean()
-        / a.replace(0, np.nan)
-    )
-
-    dx = (
-        100
-        * (plus_di - minus_di).abs()
-        / (plus_di + minus_di).replace(
-            0,
-            np.nan
-        )
-    )
-
-    return dx.ewm(
-        alpha=1 / n,
-        adjust=False
-    ).mean()
-
-
-# ============================================================
-# STOCK ANALYSIS
-# ============================================================
-
-def analyze(symbol, period="6mo"):
+def calculate_stock(
+    ticker,
+    data
+):
 
     try:
 
-        df = yf.download(
-            symbol,
-            period=period,
-            interval="1d",
-            auto_adjust=False,
-            progress=False,
-            threads=False
-        )
-
-        if df is None or df.empty:
+        if data is None or data.empty:
             return None
 
         if isinstance(
-            df.columns,
+            data.columns,
             pd.MultiIndex
         ):
-            df.columns = (
-                df.columns
+
+            data.columns = (
+                data.columns
                 .get_level_values(0)
             )
 
@@ -411,12 +239,12 @@ def analyze(symbol, period="6mo"):
         ]
 
         if not all(
-            c in df.columns
-            for c in required
+            x in data.columns
+            for x in required
         ):
             return None
 
-        df = df.dropna(
+        df = data.dropna(
             subset=required
         ).copy()
 
@@ -424,11 +252,6 @@ def analyze(symbol, period="6mo"):
             return None
 
         close = df["Close"]
-
-        volume = (
-            df["Volume"]
-            .replace(0, np.nan)
-        )
 
         ema20 = close.ewm(
             span=20,
@@ -445,11 +268,89 @@ def analyze(symbol, period="6mo"):
             adjust=False
         ).mean()
 
-        r = rsi(close)
+        rsi = calc_rsi(
+            close
+        )
 
-        a = atr(df)
+        atr = calc_atr(
+            df
+        )
 
-        adxv = adx(df)
+        volume = (
+            df["Volume"]
+            .replace(
+                0,
+                np.nan
+            )
+        )
+
+        volume_avg = (
+            volume
+            .rolling(20)
+            .mean()
+        )
+
+        volx = (
+            volume.iloc[-1] /
+            volume_avg.iloc[-1]
+        )
+
+        resistance = float(
+            df["High"]
+            .iloc[-21:-1]
+            .max()
+        )
+
+        support = float(
+            df["Low"]
+            .iloc[-21:-1]
+            .min()
+        )
+
+        price = float(
+            close.iloc[-1]
+        )
+
+        atr_value = float(
+            atr.iloc[-1]
+        )
+
+        breakout = (
+            price > resistance
+        )
+
+        above20 = (
+            price >
+            float(
+                ema20.iloc[-1]
+            )
+        )
+
+        above50 = (
+            price >
+            float(
+                ema50.iloc[-1]
+            )
+        )
+
+        above200 = (
+            price >
+            float(
+                ema200.iloc[-1]
+            )
+        )
+
+        rsi_value = float(
+            rsi.iloc[-1]
+        )
+
+        momentum = (
+            55 <= rsi_value <= 75
+        )
+
+        volume_good = (
+            volx >= 1.2
+        )
 
         macd = (
             close.ewm(
@@ -463,112 +364,24 @@ def analyze(symbol, period="6mo"):
             ).mean()
         )
 
-        macds = macd.ewm(
-            span=9,
-            adjust=False
-        ).mean()
-
-        vol20 = volume.rolling(20).mean()
-
-        volx = (
-            float(
-                volume.iloc[-1]
-                / vol20.iloc[-1]
-            )
-            if pd.notna(
-                vol20.iloc[-1]
-            )
-            else np.nan
+        macd_signal = (
+            macd.ewm(
+                span=9,
+                adjust=False
+            ).mean()
         )
 
-        resistance20 = float(
-            df["High"]
-            .iloc[-21:-1]
-            .max()
-        )
-
-        support20 = float(
-            df["Low"]
-            .iloc[-21:-1]
-            .min()
-        )
-
-        high52 = float(
-            df["High"]
-            .tail(252)
-            .max()
-        )
-
-        price = float(
-            close.iloc[-1]
-        )
-
-        atrv = float(
-            a.iloc[-1]
-        )
-
-        breakout20 = (
-            price > resistance20
-        )
-
-        breakout52 = (
-            price > high52 * 0.995
-        )
-
-        near_breakout = (
-            price >= resistance20 * 0.985
-        )
-
-        above20 = (
-            price > float(
-                ema20.iloc[-1]
-            )
-        )
-
-        above50 = (
-            price > float(
-                ema50.iloc[-1]
-            )
-        )
-
-        above200 = (
-            price > float(
-                ema200.iloc[-1]
-            )
+        macd_bull = (
+            macd.iloc[-1] >
+            macd_signal.iloc[-1]
         )
 
         ema_stack = (
             above20
             and above50
             and above200
-            and float(
-                ema20.iloc[-1]
-            )
-            >
-            float(
-                ema50.iloc[-1]
-            )
-        )
-
-        momentum = (
-            55
-            <= float(r.iloc[-1])
-            <= 75
-        )
-
-        macd_bull = (
-            float(macd.iloc[-1])
-            >
-            float(macds.iloc[-1])
-        )
-
-        adx_good = (
-            float(adxv.iloc[-1])
-            >= 20
-        )
-
-        volume_good = (
-            volx >= 1.2
+            and ema20.iloc[-1]
+            > ema50.iloc[-1]
         )
 
         score = sum(
@@ -578,113 +391,100 @@ def analyze(symbol, period="6mo"):
                 above200,
                 momentum,
                 volume_good,
-                breakout20,
-                breakout52,
+                breakout,
                 macd_bull,
-                adx_good,
                 ema_stack
             ]
         )
 
-        entry = (
-            max(
-                price,
-                resistance20 * 1.002
-            )
-            if near_breakout
-            else price
-        )
-
-        support = max(
-            support20,
-            float(
-                ema20.iloc[-1]
-            ) - 0.5 * atrv
-        )
-
-        sl = min(
-            entry - 1.5 * atrv,
-            support
-        )
-
-        if sl >= entry:
-            sl = entry - 1.5 * atrv
-
-        risk = entry - sl
-
-        tp1 = (
-            entry + 1.5 * risk
-        )
-
-        tp2 = (
-            entry + 2.5 * risk
-        )
-
-        rr1 = (
-            (tp1 - entry) / risk
-            if risk > 0
-            else np.nan
-        )
-
         if (
-            score >= 8
-            and breakout20
+            score >= 7
+            and breakout
             and volume_good
         ):
             signal = "STRONG BUY"
 
         elif (
-            score >= 7
+            score >= 6
             and (
-                breakout20
-                or near_breakout
+                breakout
+                or price >= resistance * 0.985
             )
             and volume_good
         ):
             signal = "BUY"
 
-        elif score >= 5:
+        elif score >= 4:
             signal = "WATCH"
 
         else:
             signal = "AVOID"
 
+        entry = (
+            max(
+                price,
+                resistance * 1.002
+            )
+            if price >= resistance * 0.985
+            else price
+        )
+
+        sl = min(
+            support,
+            entry - 1.5 * atr_value
+        )
+
+        if sl >= entry:
+            sl = (
+                entry -
+                1.5 * atr_value
+            )
+
+        risk = entry - sl
+
+        tp1 = (
+            entry +
+            1.5 * risk
+        )
+
+        tp2 = (
+            entry +
+            2.5 * risk
+        )
+
         return {
 
             "Ticker":
-                symbol.replace(
+                ticker.replace(
                     ".NS",
                     ""
                 ),
 
             "Price":
-                round(price, 2),
+                round(
+                    price,
+                    2
+                ),
 
             "Change %":
                 round(
-                    float(
-                        (
-                            close.iloc[-1]
-                            /
-                            close.iloc[-2]
-                            - 1
-                        )
-                        * 100
-                    ),
+                    (
+                        close.iloc[-1] /
+                        close.iloc[-2] -
+                        1
+                    ) * 100,
                     2
                 ),
 
             "RSI":
                 round(
-                    float(
-                        r.iloc[-1]
-                    ),
+                    rsi_value,
                     1
                 ),
 
             "Vol ×":
                 round(
-                    volx,
+                    float(volx),
                     2
                 ),
 
@@ -712,20 +512,6 @@ def analyze(symbol, period="6mo"):
                     2
                 ),
 
-            "ADX":
-                round(
-                    float(
-                        adxv.iloc[-1]
-                    ),
-                    1
-                ),
-
-            "ATR":
-                round(
-                    atrv,
-                    2
-                ),
-
             "Support":
                 round(
                     support,
@@ -734,24 +520,19 @@ def analyze(symbol, period="6mo"):
 
             "Resistance":
                 round(
-                    resistance20,
+                    resistance,
                     2
                 ),
 
-            "20D Breakout":
+            "Breakout":
                 "YES"
-                if breakout20
+                if breakout
                 else "NO",
 
-            "52W Breakout":
-                "YES"
-                if breakout52
-                else "NO",
-
-            "MACD Bull":
-                "YES"
+            "MACD":
+                "BULLISH"
                 if macd_bull
-                else "NO",
+                else "BEARISH",
 
             "Entry":
                 round(
@@ -777,11 +558,8 @@ def analyze(symbol, period="6mo"):
                     2
                 ),
 
-            "R:R":
-                f"1:{rr1:.1f}",
-
             "Score":
-                f"{score}/10",
+                f"{score}/8",
 
             "ScoreNum":
                 score,
@@ -795,141 +573,10 @@ def analyze(symbol, period="6mo"):
 
 
 # ============================================================
-# CANDLE PATTERN
+# SECTORS
 # ============================================================
 
-def v3_candle_pattern(df):
-
-    o = df["Open"]
-    h = df["High"]
-    l = df["Low"]
-    c = df["Close"]
-
-    O = float(o.iloc[-1])
-    H = float(h.iloc[-1])
-    L = float(l.iloc[-1])
-    C = float(c.iloc[-1])
-
-    po = float(o.iloc[-2])
-    pc = float(c.iloc[-2])
-
-    body = abs(C - O)
-
-    rng = max(
-        H - L,
-        1e-9
-    )
-
-    upper = H - max(C, O)
-
-    lower = min(C, O) - L
-
-    if (
-        C > O
-        and pc < po
-        and C >= po
-        and O <= pc
-    ):
-        return "Bullish Engulfing"
-
-    if (
-        C < O
-        and pc > po
-        and O >= pc
-        and C <= po
-    ):
-        return "Bearish Engulfing"
-
-    if (
-        lower >= 2 * max(body, 0.01)
-        and upper <= max(body, 0.01)
-    ):
-        return "Hammer"
-
-    if (
-        upper >= 2 * max(body, 0.01)
-        and lower <= max(body, 0.01)
-    ):
-        return "Shooting Star"
-
-    if body / rng < 0.12:
-        return "Doji"
-
-    return "Neutral"
-
-
-# ============================================================
-# MARKET REGIME
-# ============================================================
-
-def v3_market_regime():
-
-    try:
-
-        n = yf.download(
-            "^NSEI",
-            period="6mo",
-            interval="1d",
-            auto_adjust=False,
-            progress=False,
-            threads=False
-        )
-
-        if isinstance(
-            n.columns,
-            pd.MultiIndex
-        ):
-            n.columns = (
-                n.columns
-                .get_level_values(0)
-            )
-
-        c = n["Close"].dropna()
-
-        e20 = c.ewm(
-            span=20,
-            adjust=False
-        ).mean().iloc[-1]
-
-        e50 = c.ewm(
-            span=50,
-            adjust=False
-        ).mean().iloc[-1]
-
-        e200 = c.ewm(
-            span=200,
-            adjust=False
-        ).mean().iloc[-1]
-
-        rv = float(
-            rsi(c).iloc[-1]
-        )
-
-        if (
-            c.iloc[-1] > e20 > e50
-            and c.iloc[-1] > e200
-            and rv >= 52
-        ):
-            return "BULLISH"
-
-        if (
-            c.iloc[-1] < e20 < e50
-            and c.iloc[-1] < e200
-            and rv <= 48
-        ):
-            return "BEARISH"
-
-        return "SIDEWAYS"
-
-    except Exception:
-        return "UNKNOWN"
-
-
-# ============================================================
-# SECTOR MAP
-# ============================================================
-
-SECTOR_MAP_V33 = {
+SECTORS = {
 
     "Banking": {
         "HDFCBANK",
@@ -946,15 +593,10 @@ SECTOR_MAP_V33 = {
         "BANDHANBNK",
         "BANKINDIA",
         "IDBI",
-        "LICHSGFIN",
-        "MUTHOOTFIN",
-        "MANAPPURAM",
         "SHRIRAMFIN",
         "BAJFINANCE",
         "BAJAJFINSV",
-        "SBICARD",
-        "ICICIPRULI",
-        "ICICIGI"
+        "SBICARD"
     },
 
     "IT": {
@@ -977,9 +619,8 @@ SECTOR_MAP_V33 = {
         "EICHERMOT",
         "HEROMOTOCO",
         "TVSMOTOR",
-        "UNOMINDA",
-        "BOSCHLTD",
-        "BAJAJ-AUTO"
+        "BAJAJ-AUTO",
+        "BOSCHLTD"
     },
 
     "Pharma": {
@@ -992,11 +633,8 @@ SECTOR_MAP_V33 = {
         "BIOCON",
         "GLENMARK",
         "TORNTPHARM",
-        "SYNGENE",
         "MAXHEALTH",
-        "FORTIS",
-        "LAURUSLABS",
-        "ZYDUSLIFE"
+        "FORTIS"
     },
 
     "Energy": {
@@ -1054,8 +692,7 @@ SECTOR_MAP_V33 = {
         "KEI",
         "POLYCAB",
         "DIXON",
-        "THERMAX",
-        "BEML"
+        "THERMAX"
     },
 
     "Realty": {
@@ -1083,60 +720,36 @@ SECTOR_MAP_V33 = {
 }
 
 
-def v33_sector_filter(
+def sector_filter(
     symbols,
-    selected
+    sector
 ):
 
-    if selected == "All sectors":
-        return list(symbols)
+    if sector == "All sectors":
+        return symbols
 
-    allowed = SECTOR_MAP_V33.get(
-        selected,
+    allowed = SECTORS.get(
+        sector,
         set()
     )
 
     return [
         s
         for s in symbols
-        if s
-        .replace(".NS", "")
-        .upper()
+        if s.replace(
+            ".NS",
+            ""
+        ).upper()
         in allowed
     ]
-
-
-# ============================================================
-# SESSION STATE
-# ============================================================
-
-def v33_clear_on_sector_change(
-    selected
-):
-
-    previous = st.session_state.get(
-        "v33_previous_sector"
-    )
-
-    if previous != selected:
-
-        st.session_state[
-            "v33_previous_sector"
-        ] = selected
-
-        st.session_state[
-            "results_v3"
-        ] = None
 
 
 # ============================================================
 # UI
 # ============================================================
 
-market_regime = v3_market_regime()
-
 st.title(
-    "📈 Vardha Pro Stock Screener V3.3"
+    "📈 Vardha Pro Stock Screener V4"
 )
 
 st.caption(
@@ -1144,22 +757,16 @@ st.caption(
 )
 
 st.caption(
-    "Broad NIFTY-style universe • "
-    "Intraday/Swing research • "
-    "Candlestick confirmation • "
-    "Sector filtering • "
-    "Options-stock finder"
-)
-
-st.caption(
-    "Momentum + trend + breakout + volume + "
-    "price-action framework | "
-    "Educational/research tool — not investment advice"
+    "NIFTY 500 • Batch scanning • "
+    "Momentum • Trend • Breakout • Volume • "
+    "Price Action"
 )
 
 with st.sidebar:
 
-    st.header("Universe")
+    st.header(
+        "Universe"
+    )
 
     mode = st.radio(
         "Stocks to scan",
@@ -1172,14 +779,17 @@ with st.sidebar:
     if mode == "Custom symbols":
 
         raw = st.text_area(
-            "Symbols (comma/newline separated)",
+            "Enter symbols",
             "RELIANCE, TCS, INFY"
         )
 
-        selected_symbols = [
+        custom = [
             x.strip().upper()
             for x in raw
-            .replace("\n", ",")
+            .replace(
+                "\n",
+                ","
+            )
             .split(",")
             if x.strip()
         ]
@@ -1188,14 +798,16 @@ with st.sidebar:
             x
             if x.endswith(".NS")
             else x + ".NS"
-            for x in selected_symbols
+            for x in custom
         ]
 
     else:
 
         symbols = SYMBOLS.copy()
 
-    st.header("Strategy Filters")
+    st.header(
+        "Filters"
+    )
 
     period = st.selectbox(
         "History",
@@ -1203,60 +815,25 @@ with st.sidebar:
             "6mo",
             "1y",
             "2y"
-        ],
-        index=0
-    )
-
-    min_score = st.slider(
-        "Minimum score for Watchlist",
-        4,
-        9,
-        5
-    )
-
-    volume_threshold = st.slider(
-        "Volume multiple",
-        1.0,
-        3.0,
-        1.20,
-        0.05
-    )
-
-    require_breakout = st.checkbox(
-        "Require 20-day breakout for BUY",
-        False
-    )
-
-    require_ema200 = st.checkbox(
-        "Require price above EMA200 for BUY",
-        False
-    )
-
-    st.header("V3 Mode")
-
-    strategy_mode = st.radio(
-        "Strategy",
-        [
-            "Swing",
-            "Intraday",
-            "Options Stock Finder"
         ]
     )
 
-    sector_filter = st.selectbox(
+    min_score = st.slider(
+        "Minimum score",
+        3,
+        8,
+        4
+    )
+
+    sector = st.selectbox(
         "Sector",
         [
             "All sectors"
         ]
         +
         list(
-            SECTOR_MAP_V33.keys()
+            SECTORS.keys()
         )
-    )
-
-    market_guard = st.checkbox(
-        "Use market-regime guard",
-        True
     )
 
     scan = st.button(
@@ -1267,281 +844,246 @@ with st.sidebar:
 
 
 # ============================================================
-# RESULTS STATE
-# ============================================================
-
-if "results_v3" not in st.session_state:
-    st.session_state.results_v3 = None
-
-v33_clear_on_sector_change(
-    sector_filter
-)
-
-
-# ============================================================
 # SCAN
 # ============================================================
 
 if scan:
 
-    rows = []
+    symbols = sector_filter(
+        symbols,
+        sector
+    )
+
+    st.info(
+        f"Scanning {len(symbols)} stocks..."
+    )
 
     progress = st.progress(0)
 
-    status = st.empty()
+    try:
 
-    # IMPORTANT:
-    # V3.3 sector filter
-    symbols = v33_sector_filter(
-        symbols,
-        sector_filter
-    )
-
-    st.caption(
-        f"Selected sector: "
-        f"{sector_filter} • "
-        f"Stocks to scan: "
-        f"{len(symbols)}"
-    )
-
-    for i, sym in enumerate(symbols):
-
-        status.write(
-            f"Scanning "
-            f"{sym.replace('.NS','')} "
-            f"({i+1}/{len(symbols)})"
+        data = yf.download(
+            symbols,
+            period=period,
+            interval="1d",
+            auto_adjust=False,
+            progress=False,
+            group_by="ticker",
+            threads=True
         )
 
-        row = analyze(
-            sym,
-            period
+    except Exception as e:
+
+        st.error(
+            f"Yahoo Finance download error: {e}"
         )
 
-        if row:
+        data = None
 
-            # Volume adjustment
-            if row["Vol ×"] < volume_threshold:
+    rows = []
 
-                row["ScoreNum"] = max(
-                    0,
-                    row["ScoreNum"] - 1
+    if data is not None and not data.empty:
+
+        total = len(symbols)
+
+        for i, ticker in enumerate(symbols):
+
+            try:
+
+                if isinstance(
+                    data.columns,
+                    pd.MultiIndex
+                ):
+
+                    if ticker not in data.columns.get_level_values(0):
+
+                        progress.progress(
+                            (i + 1) / total
+                        )
+
+                        continue
+
+                    stock_df = data[
+                        ticker
+                    ].copy()
+
+                else:
+
+                    stock_df = data.copy()
+
+                result = calculate_stock(
+                    ticker,
+                    stock_df
                 )
 
-            # EMA200 requirement
-            if (
-                require_ema200
-                and row["EMA200"] >= row["Price"]
-            ):
+                if result:
+                    rows.append(result)
 
-                row["Signal"] = (
-                    "WATCH"
-                    if row["ScoreNum"] >= min_score
-                    else "AVOID"
-                )
+            except Exception:
+                pass
 
-            # Breakout requirement
-            if (
-                require_breakout
-                and row["Signal"]
-                in [
-                    "BUY",
-                    "STRONG BUY"
-                ]
-                and row["20D Breakout"]
-                != "YES"
-            ):
-
-                row["Signal"] = "WATCH"
-
-            rows.append(row)
-
-        progress.progress(
-            (i + 1) / len(symbols)
-        )
-
-    status.empty()
+            progress.progress(
+                (i + 1) / total
+            )
 
     progress.empty()
 
-    st.session_state.results_v3 = (
-        pd.DataFrame(rows)
-    )
+    if rows:
 
+        results = pd.DataFrame(
+            rows
+        )
 
-# ============================================================
-# DISPLAY RESULTS
-# ============================================================
+        results = results.sort_values(
+            [
+                "ScoreNum",
+                "Vol ×",
+                "RSI"
+            ],
+            ascending=[
+                False,
+                False,
+                False
+            ]
+        )
 
-df = st.session_state.results_v3
+        st.success(
+            f"Scan completed: "
+            f"{len(results)} stocks successfully analysed."
+        )
 
-if df is None or df.empty:
+        c1, c2, c3, c4 = st.columns(4)
 
-    st.info(
-        "Set your filters and click "
-        "🔎 SCAN NOW to run the screener."
-    )
+        c1.metric(
+            "Stocks scanned",
+            len(results)
+        )
 
-else:
-
-    df = df.sort_values(
-        [
-            "ScoreNum",
-            "Vol ×",
-            "RSI"
-        ],
-        ascending=[
-            False,
-            False,
-            False
-        ]
-    ).reset_index(
-        drop=True
-    )
-
-    buy_mask = df[
-        "Signal"
-    ].isin(
-        [
+        c2.metric(
             "BUY",
-            "STRONG BUY"
-        ]
-    )
-
-    watch_mask = df[
-        "Signal"
-    ].eq(
-        "WATCH"
-    )
-
-    c1, c2, c3, c4 = st.columns(4)
-
-    c1.metric(
-        "Stocks scanned",
-        len(df)
-    )
-
-    c2.metric(
-        "BUY setups",
-        int(
-            buy_mask.sum()
-        )
-    )
-
-    c3.metric(
-        "Watchlist",
-        int(
-            watch_mask.sum()
-        )
-    )
-
-    c4.metric(
-        "Best score",
-        f"{int(df.ScoreNum.max())}/10"
-    )
-
-    st.subheader(
-        "🔥 Today's Top Setups"
-    )
-
-    top = df[
-        df["ScoreNum"] >= min_score
-    ].head(10).copy()
-
-    if top.empty:
-
-        st.warning(
-            "No setup meets the current "
-            "Watchlist score. "
-            "Try a lower minimum score "
-            "or scan again later."
-        )
-
-    else:
-
-        cols = [
-            "Ticker",
-            "Price",
-            "RSI",
-            "Vol ×",
-            "ADX",
-            "Support",
-            "Resistance",
-            "20D Breakout",
-            "Score",
-            "Signal"
-        ]
-
-        st.dataframe(
-            top[cols],
-            use_container_width=True,
-            hide_index=True
-        )
-
-    tab1, tab2, tab3 = st.tabs(
-        [
-            "📊 All Results",
-            "🎯 Trade Plans",
-            "📘 Strategy"
-        ]
-    )
-
-    with tab1:
-
-        show_cols = [
-            "Ticker",
-            "Price",
-            "Change %",
-            "RSI",
-            "Vol ×",
-            "EMA20",
-            "EMA50",
-            "EMA200",
-            "ADX",
-            "Support",
-            "Resistance",
-            "20D Breakout",
-            "52W Breakout",
-            "MACD Bull",
-            "Score",
-            "Signal"
-        ]
-
-        st.dataframe(
-            df[show_cols],
-            use_container_width=True,
-            hide_index=True
-        )
-
-        st.download_button(
-            "⬇️ Export full scan to CSV",
-            df.drop(
-                columns=["ScoreNum"]
-            ).to_csv(
-                index=False
-            ).encode("utf-8"),
-            "vardha_pro_screener_v3_3.csv",
-            "text/csv"
-        )
-
-    with tab2:
-
-        plans = df[
-            df["Signal"].isin(
-                [
-                    "BUY",
-                    "STRONG BUY",
-                    "WATCH"
-                ]
+            int(
+                results[
+                    "Signal"
+                ].isin(
+                    [
+                        "BUY",
+                        "STRONG BUY"
+                    ]
+                ).sum()
             )
+        )
+
+        c3.metric(
+            "WATCH",
+            int(
+                (
+                    results[
+                        "Signal"
+                    ] == "WATCH"
+                ).sum()
+            )
+        )
+
+        c4.metric(
+            "Best score",
+            f"{int(results.ScoreNum.max())}/8"
+        )
+
+        st.subheader(
+            "🔥 Top Setups"
+        )
+
+        top = results[
+            results["ScoreNum"]
+            >= min_score
         ].head(15)
 
-        if plans.empty:
+        if top.empty:
 
-            st.info(
-                "No current trade-plan candidates."
+            st.warning(
+                "No stocks matched "
+                "the selected score."
             )
 
         else:
+
+            st.dataframe(
+                top[
+                    [
+                        "Ticker",
+                        "Price",
+                        "RSI",
+                        "Vol ×",
+                        "EMA20",
+                        "EMA50",
+                        "EMA200",
+                        "Breakout",
+                        "Score",
+                        "Signal"
+                    ]
+                ],
+                use_container_width=True,
+                hide_index=True
+            )
+
+        tab1, tab2 = st.tabs(
+            [
+                "📊 All Results",
+                "🎯 Trade Plans"
+            ]
+        )
+
+        with tab1:
+
+            st.dataframe(
+                results[
+                    [
+                        "Ticker",
+                        "Price",
+                        "Change %",
+                        "RSI",
+                        "Vol ×",
+                        "EMA20",
+                        "EMA50",
+                        "EMA200",
+                        "Support",
+                        "Resistance",
+                        "Breakout",
+                        "MACD",
+                        "Score",
+                        "Signal"
+                    ]
+                ],
+                use_container_width=True,
+                hide_index=True
+            )
+
+            st.download_button(
+                "⬇️ Download CSV",
+                results.drop(
+                    columns=[
+                        "ScoreNum"
+                    ]
+                ).to_csv(
+                    index=False
+                ).encode(
+                    "utf-8"
+                ),
+                "vardha_pro_screener.csv",
+                "text/csv"
+            )
+
+        with tab2:
+
+            plans = results[
+                results["Signal"].isin(
+                    [
+                        "BUY",
+                        "STRONG BUY",
+                        "WATCH"
+                    ]
+                )
+            ].head(20)
 
             st.dataframe(
                 plans[
@@ -1553,10 +1095,7 @@ else:
                         "SL",
                         "TP1",
                         "TP2",
-                        "R:R",
-                        "Score",
-                        "Support",
-                        "Resistance"
+                        "Score"
                     ]
                 ],
                 use_container_width=True,
@@ -1564,42 +1103,22 @@ else:
             )
 
             st.caption(
-                "Entry/SL/TP are rule-based "
-                "research levels using recent "
-                "resistance/support and ATR; "
-                "they are not personalized recommendations."
+                "Entry, SL and TP are "
+                "rule-based research levels "
+                "and are not personalized "
+                "investment advice."
             )
 
-    with tab3:
+    else:
 
-        st.markdown(
-            """
-**Scoring (10 points):**
-
-1. Price above EMA20
-2. Price above EMA50
-3. Price above EMA200
-4. RSI in momentum zone
-5. Volume expansion
-6. 20-day breakout
-7. Near 52-week breakout
-8. MACD bullish
-9. ADX ≥ 20
-10. EMA trend stack
-
-**Signal logic:**
-
-STRONG BUY requires high score +
-confirmed 20-day breakout +
-volume expansion.
-
-BUY requires a high score plus
-breakout/near-breakout and volume.
-
-WATCH means the trend/momentum is
-interesting but confirmation is incomplete.
-
-This tool is for educational/research
-purposes and does not guarantee returns.
-"""
+        st.error(
+            "No stocks could be analysed. "
+            "Please try again."
         )
+
+else:
+
+    st.info(
+        "Select your filters and click "
+        "🔎 SCAN NOW."
+    )
